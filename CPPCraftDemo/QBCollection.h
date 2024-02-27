@@ -2,12 +2,18 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <array>
 #include <memory>
 #include <type_traits>
+#include <stdexcept>
+
+#ifdef _DEBUG
+#include <iostream>
+#endif
 
 namespace qb {
 
@@ -23,6 +29,7 @@ enum struct RecordValueType {
 struct RecordValue {
     virtual bool fromStr(std::string_view s) = 0;
     virtual std::string toStr() const = 0;
+    virtual std::unique_ptr<RecordValue> copy() const = 0;
 };
 
 struct StrRecordValue : public RecordValue {
@@ -44,6 +51,10 @@ struct StrRecordValue : public RecordValue {
     std::string toStr() const override {
         return value;
     }
+
+    std::unique_ptr<RecordValue> copy() const override {
+        return std::make_unique<StrRecordValue>(value);
+    }
 };
 
 struct Int32RecordValue : public RecordValue {
@@ -62,6 +73,10 @@ struct Int32RecordValue : public RecordValue {
 
     std::string toStr() const override {
         return std::to_string(value);
+    }
+
+    std::unique_ptr<RecordValue> copy() const override {
+        return std::make_unique<Int32RecordValue>(value);
     }
 };
 
@@ -82,6 +97,10 @@ struct Int64RecordValue : public RecordValue {
     std::string toStr() const override {
         return std::to_string(value);
     }
+
+    std::unique_ptr<RecordValue> copy() const override {
+        return std::make_unique<Int64RecordValue>(value);
+    }
 };
 
 template <size_t N>
@@ -90,12 +109,23 @@ struct Record {
     static constexpr size_t RecordsCount = N;
 
     std::array<std::unique_ptr<RecordValue>, RecordsCount> columns;
+
+    Record copy() const {
+        Record res;
+        for (size_t i = 0; i < RecordsCount; i++) {
+            res.columns[i] = columns[i]->copy();
+        }
+        return res;
+    }
 };
 
 struct Column {
     std::string_view name;
     RecordValueType type;
     int32_t index;
+
+    Column() : name({}), type(RecordValueType::None), index(-1) {}
+    Column(std::string_view s, RecordValueType t, int32_t i) : name(s), type(t), index(i) {}
 };
 
 template <size_t RecordSize>
@@ -107,8 +137,8 @@ struct Collection {
     using ColumnNamesType = std::array<std::string, RecordSize>;
 
     using RecordsMapType = std::unordered_map<typename RecordType::IdType, RecordType>;
-    using StrIndices = std::unordered_map<std::string, typename RecordType::IdType>;
-    using Int64Indices = std::unordered_map<int64_t, typename RecordType::IdType>;
+    using StrIndices = std::unordered_map<std::string, std::vector<typename RecordType::IdType>>;
+    using Int64Indices = std::unordered_map<int64_t, std::vector<typename RecordType::IdType>>;
 
     Collection(std::array<std::string, RecordSize>&& columnNames) {
         if (columnNames.size() != RecordSize) {
@@ -162,8 +192,14 @@ struct Collection {
     bool insertRecord(RecordType&& record) {
         bool ok = true;
 
-        Int32RecordValue* idRecord = dynamic_cast<Int32RecordValue*>(value.get());
+        if (record.columns.size() < 1) {
+            ok = false;
+            return ok;
+        }
+
+        Int32RecordValue* idRecord = dynamic_cast<Int32RecordValue*>(record.columns[0].get());
         if (!idRecord) {
+            // The first column must be the recrod id!
             return false;
         }
         auto id = idRecord->value;
@@ -193,8 +229,17 @@ struct Collection {
                 StrIndices& strIndices = m_strIndices[column.index];
                 StrRecordValue* strRecord = dynamic_cast<StrRecordValue*>(value.get());
                 if (strRecord) {
-                    strIndices.insert(std::make_pair(strRecord->value, id));
+                    auto it = strIndices.find(strRecord->value);
+                    if (it == strIndices.end()) {
+                        it = strIndices.insert(std::make_pair(strRecord->value, id)).first;
+                    }
+
+                    it->second.push_back(id);
                     ok = true;
+                }
+                else {
+                    ok = false;
+                    break;
                 }
             }
             else if (column.type == RecordValueType::Int64) {
@@ -206,9 +251,22 @@ struct Collection {
                 Int64Indices& int64Indices = m_int64Indices[column.index];
                 Int64RecordValue* int64Record = dynamic_cast<Int64RecordValue*>(value.get());
                 if (int64Record) {
-                    int64Indices.insert(std::make_pair(int64Record->value, id));
+                    auto it = int64Indices.find(int64Record->value);
+                    if (it == int64Indices.end()) {
+                        it = int64Indices.insert(std::make_pair(int64Record->value, id)).first;
+                    }
+
+                    it->second.push_back(id);
                     ok = true;
                 }
+                else {
+                    ok = false;
+                    break;
+                }
+            }
+            else {
+                ok = false;
+                break;
             }
         }
 
@@ -220,72 +278,125 @@ struct Collection {
         return ok;
     }
 
-    Collection<RecordSize> match(const std::string& columnName, const std::string& matchString) {
+    Collection<RecordSize> match(const std::string& columnName, const std::string& matchString, bool& ok) {
         ColumnNamesType namesCopy = m_columnNames;
         Collection<RecordSize> res (std::move(namesCopy));
 
         bool isTheIdColumn = columnName == m_columnNames[0];
 
         if (isTheIdColumn) {
-            bool ok = core::toInt32(matchString.data(), id);
+            int32_t id = 0;
+            ok = core::toInt32(matchString.data(), id);
             if (!ok) return res;
 
             auto it = m_records.find(id);
             if (it != m_records.end()) {
                 // When matching the id column there is only one record to return
-                auto recCpy = it->second;
-                res.insertRecord(recCpy);
+                auto recCpy = it->second.copy();
+                res.insertRecord(std::move(recCpy));
             }
 
+            ok = true;
             return res;
         }
 
         auto columnIt = m_columns.find(columnName);
         if (columnIt == m_columns.end()) {
+            ok = false;
             return res;
         }
 
         auto& column = columnIt->second;
         if (column.index == -1) {
             // No index set for this column
+            ok = false;
             return res;
         }
 
+        auto resolveFromIndices = [this, &res](auto& indices, auto& value) {
+            auto range = indices.equal_range(value);
+            for (auto it = range.first; it != range.second; it++) {
+                for (auto& id : it->second) {
+                    auto recIt = m_records.find(id);
+                    if (recIt != m_records.end()) {
+                        auto recCpy = recIt->second.copy();
+                        res.insertRecord(std::move(recCpy));
+                    }
+                }
+            }
+        };
+
         if (column.type == RecordValueType::String) {
             if (column.index >= m_strIndices.size()) {
+                ok = false;
                 return res;
             }
 
             StrIndices& strIndices = m_strIndices[column.index];
-            auto range = strIndices.equal_range(matchString);
-            for (auto it = range.first; it != range.second; ++it) {
-                auto recIt = m_records.find(it->second);
-                if (recIt != m_records.end()) {
-                    auto recCpy = recIt->second;
-                    res.insertRecord(recCpy);
-                }
-            }
+            resolveFromIndices(strIndices, matchString);
         }
         else if (column.type == RecordValueType::Int64) {
             if (column.index >= m_int64Indices.size()) {
+                ok = false;
                 return res;
             }
 
+            int64_t v;
+            ok = core::toInt64(matchString.data(), v);
+            if (!ok) return res;
+
             Int64Indices& int64Indices = m_int64Indices[column.index];
-            auto range = int64Indices.equal_range(core::toInt64(matchString.data()));
-            for (auto it = range.first; it != range.second; ++it) {
-                auto recIt = m_records.find(it->second);
-                if (recIt != m_records.end()) {
-                    auto recCpy = recIt->second;
-                    res.insertRecord(recCpy);
-                }
-            }
+            resolveFromIndices(int64Indices, v);
         }
 
+        ok = true;
         return res;
     }
 
-public: // TODO: make private
+#ifdef _DEBUG
+
+    void debug_PrintCollection() const {
+       std::cout << "Records: " << std::endl;
+       for (auto& rec : m_records) {
+            std::cout << "\t{ " ;
+            for (size_t i = 0; i < RecordSize; i++) {
+                std::cout << m_columnNames[i] << ": " << rec.second.columns[i]->toStr() << ", ";
+            }
+            std::cout << "}" << std::endl;
+        }
+
+        std::cout << "String indices: " << std::endl;
+        for (size_t i = 0; i < m_strIndices.size(); i++) {
+            std::cout << "\t{ ";
+            for (auto& idx : m_strIndices[i]) {
+                std::cout << idx.first << ": { ";
+                for (auto& id : idx.second) {
+                    std::cout << id << ", ";
+                }
+                std::cout << "}, ";
+            }
+            std::cout << "} " << std::endl;
+        }
+
+        std::cout << "Int64 indices: " << std::endl;
+        for (size_t i = 0; i < m_int64Indices.size(); i++) {
+            std::cout << "\t{ ";
+            for (auto& idx : m_int64Indices[i]) {
+                std::cout << idx.first << ": { ";
+                for (auto& id : idx.second) {
+                    std::cout << id << ", ";
+                }
+                std::cout << "}, ";
+            }
+            std::cout << "} " << std::endl;
+        }
+
+        std::cout << std::endl;
+    }
+
+#endif
+
+private:
     ColumnsType m_columns;
     ColumnNamesType m_columnNames;
     RecordsMapType m_records;

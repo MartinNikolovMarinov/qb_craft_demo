@@ -10,26 +10,13 @@
 #include <string>
 #include <vector>
 
-using QBRecordCollection = qb::Collection<3>;
+using QBRecordCollection = qb::Collection<4>;
 
 // QBRecordCollection QBFindMatchingRecords(const QBRecordCollection& records, const std::string& columnName, const std::string& matchString) {
 //     // QBRecordCollection ret;
 //     // if (records.empty()) return ret;
 //     return ret;
 // }
-
-void debug_PrintCollection(const QBRecordCollection& c) {
-   /* for (const auto& [id, r] : c.m_records) {
-        std::cout << "{ '" << id << "': { ";
-        size_t i = 0;
-        for (i = 0; i < r.columns.size() - 1; i++) {
-            std::cout << c.m_columnNames[i].name << ": " << r.columns[i]->toStr() << ", ";
-        }
-        std::cout << c.m_columnNames[i].name << ": " << r.columns[i]->toStr();
-        std::cout << "}\n";
-    }
-    std::cout << std::endl;*/
-}
 
 static constexpr int32_t TEST_CASES = 100000;
 static constexpr int32_t TEST_RND_ELEMENTS = 1000;
@@ -124,7 +111,7 @@ void beforeTests() {
 
 void runFunctionalTests() {
     {
-        QBRecordCollection c({ "column1", "column2", "column3" });
+        QBRecordCollection c({ "column0", "column1", "column2", "column3" });
 
         bool ok = false;
         ok = c.createIndex("column1", qb::RecordValueType::String);
@@ -134,14 +121,82 @@ void runFunctionalTests() {
         ok = c.createIndex("column3", qb::RecordValueType::String);
         assert(ok);
 
-       c.insertRecord({
-            0,
-            { 
-                std::make_unique<qb::StrRecordValue>("data1"), 
+        {
+            auto res = c.match("column0", "0", ok);
+            res.debug_PrintCollection();
+        }
+
+        ok = c.insertRecord({
+            {
+                std::make_unique<qb::Int32RecordValue>(0),
+                std::make_unique<qb::StrRecordValue>("data1"),
                 std::make_unique<qb::Int64RecordValue>(60),
                 std::make_unique<qb::StrRecordValue>("data2")
             }
-       });
+        });
+        assert(ok);
+
+        {
+            auto res = c.match("column0", "0", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column1", "data1", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column2", "60", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column3", "data2", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column2", "not a number so what ?", ok);
+            assert(!ok);
+            res.debug_PrintCollection();
+        }
+
+         ok = c.insertRecord({
+            {
+                std::make_unique<qb::Int32RecordValue>(1),
+                std::make_unique<qb::StrRecordValue>("data1"),
+                std::make_unique<qb::Int64RecordValue>(60),
+                std::make_unique<qb::StrRecordValue>("data2")
+            }
+        });
+        assert(ok);
+
+        {
+            auto res = c.match("column0", "1", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column1", "data1", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column2", "60", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column3", "data2", ok);
+            assert(ok);
+            res.debug_PrintCollection();
+        }
+        {
+            auto res = c.match("column2", "not a number so what ?", ok);
+            assert(!ok);
+            res.debug_PrintCollection();
+        }
     }
 }
 
@@ -153,6 +208,6 @@ void runAllTestCases() {
 
 int main(int argc, _TCHAR* argv[]) {
     runAllTestCases();
-	return 0;
+    return 0;
 }
 

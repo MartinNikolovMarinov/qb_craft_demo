@@ -9,3 +9,5 @@ ipch
 *.user
 *.vscode
 .vs
+Debug
+Release
