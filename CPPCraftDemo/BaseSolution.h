@@ -17,9 +17,9 @@ struct QBRecord
 };
 
 inline bool operator==(const QBRecord& lhs, const QBRecord& rhs) {
-    return lhs.column0 == rhs.column0 && 
-            lhs.column1 == rhs.column1 && 
-            lhs.column2 == rhs.column2 && 
+    return lhs.column0 == rhs.column0 &&
+            lhs.column1 == rhs.column1 &&
+            lhs.column2 == rhs.column2 &&
             lhs.column3 == rhs.column3;
 }
 
