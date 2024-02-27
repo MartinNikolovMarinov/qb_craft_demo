@@ -186,6 +186,8 @@ struct Collection {
 
     bool empty() const { return m_records.empty(); }
 
+    size_t size() const { return m_records.size(); }
+
     RecordsMapType::const_iterator begin() const { return m_records.begin(); }
     RecordsMapType::const_iterator end() const { return m_records.end(); }
 
@@ -231,7 +233,7 @@ struct Collection {
                 if (strRecord) {
                     auto it = strIndices.find(strRecord->value);
                     if (it == strIndices.end()) {
-                        it = strIndices.insert(std::make_pair(strRecord->value, id)).first;
+                        it = strIndices.insert({ strRecord->value, { uint32_t(id) } }).first;
                     }
 
                     it->second.push_back(id);
@@ -253,7 +255,7 @@ struct Collection {
                 if (int64Record) {
                     auto it = int64Indices.find(int64Record->value);
                     if (it == int64Indices.end()) {
-                        it = int64Indices.insert(std::make_pair(int64Record->value, id)).first;
+                        it = int64Indices.insert({ int64Record->value, { uint32_t(id) } }).first;
                     }
 
                     it->second.push_back(id);
@@ -278,7 +280,7 @@ struct Collection {
         return ok;
     }
 
-    Collection<RecordSize> match(const std::string& columnName, const std::string& matchString, bool& ok) {
+    Collection<RecordSize> match(const std::string& columnName, const std::string& matchString, bool& ok) const {
         ColumnNamesType namesCopy = m_columnNames;
         Collection<RecordSize> res (std::move(namesCopy));
 
@@ -313,8 +315,15 @@ struct Collection {
             return res;
         }
 
-        auto resolveFromIndices = [this, &res](auto& indices, auto& value) {
-            auto range = indices.equal_range(value);
+        if (column.type == RecordValueType::String) {
+            if (column.index >= m_strIndices.size()) {
+                ok = false;
+                return res;
+            }
+
+            const auto& strIndices = m_strIndices[column.index];
+
+            auto range = strIndices.equal_range(matchString);
             for (auto it = range.first; it != range.second; it++) {
                 for (auto& id : it->second) {
                     auto recIt = m_records.find(id);
@@ -324,16 +333,6 @@ struct Collection {
                     }
                 }
             }
-        };
-
-        if (column.type == RecordValueType::String) {
-            if (column.index >= m_strIndices.size()) {
-                ok = false;
-                return res;
-            }
-
-            StrIndices& strIndices = m_strIndices[column.index];
-            resolveFromIndices(strIndices, matchString);
         }
         else if (column.type == RecordValueType::Int64) {
             if (column.index >= m_int64Indices.size()) {
@@ -345,19 +344,85 @@ struct Collection {
             ok = core::toInt64(matchString.data(), v);
             if (!ok) return res;
 
-            Int64Indices& int64Indices = m_int64Indices[column.index];
-            resolveFromIndices(int64Indices, v);
+            const auto& int64Indices = m_int64Indices[column.index];
+
+            auto range = int64Indices.equal_range(v);
+            for (auto it = range.first; it != range.second; it++) {
+                for (auto& id : it->second) {
+                    auto recIt = m_records.find(id);
+                    if (recIt != m_records.end()) {
+                        auto recCpy = recIt->second.copy();
+                        res.insertRecord(std::move(recCpy));
+                    }
+                }
+            }
         }
 
         ok = true;
         return res;
     }
 
+    void remove(typename RecordType::IdType id) {
+        auto it = m_records.find(id);
+        if (it != m_records.end()) {
+            for (size_t i = 1; i < RecordSize; i++) {
+                auto& columnName = m_columnNames[i];
+                auto columnIt = m_columns.find(columnName);
+                if (columnIt == m_columns.end()) {
+                    continue;
+                }
+                auto& column = columnIt->second;
+                auto& value = it->second.columns[i];
+
+                if (column.index == -1) {
+                    // No index set for this column
+                    continue;
+                }
+
+
+                // Remove from indices
+
+                if (column.type == RecordValueType::String) {
+                    if (column.index >= m_strIndices.size()) {
+                        continue;
+                    }
+
+                    StrIndices& strIndices = m_strIndices[column.index];
+                    StrRecordValue* strRecord = dynamic_cast<StrRecordValue*>(value.get());
+                    if (strRecord) {
+                        auto it = strIndices.find(strRecord->value);
+                        if (it != strIndices.end()) {
+                            auto& vec = it->second;
+                            vec.erase(std::remove(vec.begin(), vec.end(), id), vec.end());
+                        }
+                    }
+                }
+                else if (column.type == RecordValueType::Int64) {
+                    if (column.index >= m_int64Indices.size()) {
+                        continue;
+                    }
+
+                    Int64Indices& int64Indices = m_int64Indices[column.index];
+                    Int64RecordValue* int64Record = dynamic_cast<Int64RecordValue*>(value.get());
+                    if (int64Record) {
+                        auto it = int64Indices.find(int64Record->value);
+                        if (it != int64Indices.end()) {
+                            auto& vec = it->second;
+                            vec.erase(std::remove(vec.begin(), vec.end(), id), vec.end());
+                        }
+                    }
+                }
+            }
+
+            m_records.erase(it);
+        }
+    }
+
 #ifdef _DEBUG
 
-    void debug_PrintCollection() const {
+    void debug_PrintCollection(bool printIndices = false) const {
        std::cout << "Records: " << std::endl;
-       for (auto& rec : m_records) {
+        for (auto& rec : m_records) {
             std::cout << "\t{ " ;
             for (size_t i = 0; i < RecordSize; i++) {
                 std::cout << m_columnNames[i] << ": " << rec.second.columns[i]->toStr() << ", ";
@@ -365,30 +430,40 @@ struct Collection {
             std::cout << "}" << std::endl;
         }
 
-        std::cout << "String indices: " << std::endl;
-        for (size_t i = 0; i < m_strIndices.size(); i++) {
-            std::cout << "\t{ ";
-            for (auto& idx : m_strIndices[i]) {
-                std::cout << idx.first << ": { ";
-                for (auto& id : idx.second) {
-                    std::cout << id << ", ";
+        if (printIndices) {
+            std::cout << "String indices: " << std::endl;
+            for (size_t i = 0; i < m_strIndices.size(); i++) {
+                std::cout << "\t{ ";
+                for (auto& idx : m_strIndices[i]) {
+                    std::cout << idx.first << ": { ";
+                    for (auto& id : idx.second) {
+                        std::cout << id << ", ";
+                    }
+                    std::cout << "}, ";
                 }
-                std::cout << "}, ";
+                std::cout << "} " << std::endl;
             }
-            std::cout << "} " << std::endl;
+        }
+        else {
+            std::cout << "String indices: " << m_strIndices.size() << std::endl;
         }
 
-        std::cout << "Int64 indices: " << std::endl;
-        for (size_t i = 0; i < m_int64Indices.size(); i++) {
-            std::cout << "\t{ ";
-            for (auto& idx : m_int64Indices[i]) {
-                std::cout << idx.first << ": { ";
-                for (auto& id : idx.second) {
-                    std::cout << id << ", ";
+        if (printIndices) {
+            std::cout << "Int64 indices: " << std::endl;
+            for (size_t i = 0; i < m_int64Indices.size(); i++) {
+                std::cout << "\t{ ";
+                for (auto& idx : m_int64Indices[i]) {
+                    std::cout << idx.first << ": { ";
+                    for (auto& id : idx.second) {
+                        std::cout << id << ", ";
+                    }
+                    std::cout << "}, ";
                 }
-                std::cout << "}, ";
+                std::cout << "} " << std::endl;
             }
-            std::cout << "} " << std::endl;
+        }
+        else {
+            std::cout << "Int64 indices: " << m_int64Indices.size() << std::endl;
         }
 
         std::cout << std::endl;
