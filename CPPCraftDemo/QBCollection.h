@@ -1,5 +1,7 @@
 #pragma once
 
+#include <assert.h>
+
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -478,5 +480,10 @@ private:
     std::vector<StrIndices> m_strIndices;
     std::vector<Int64Indices> m_int64Indices;
 };
+
+using QBRecordCollection = qb::Collection<4>;
+
+QBRecordCollection QBFindMatchingRecords(const QBRecordCollection& records, const std::string& columnName, const std::string& matchString);
+void DeleteRecordByID(QBRecordCollection& records, uint32_t id);
 
 } // qb

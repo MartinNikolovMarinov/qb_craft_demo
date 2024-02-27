@@ -13,3 +13,4 @@
 #include "BaseSolution.h"
 #include "Utils.h"
 #include "QBCollection.h"
+#include "Tests.h"
