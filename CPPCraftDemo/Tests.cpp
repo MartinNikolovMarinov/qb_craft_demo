@@ -109,126 +109,182 @@ void beforeTests() {
 }
 
 void runFunctionalTests() {
-    //    {
-    //        QBRecordCollection c({ "column0", "column1", "column2", "column3" });
-    //
-    //        bool ok = false;
-    //        ok = c.createIndex("column1", qb::RecordValueType::String);
-    //        assert(ok);
-    //        ok = c.createIndex("column2", qb::RecordValueType::Int64);
-    //        assert(ok);
-    //        ok = c.createIndex("column3", qb::RecordValueType::String);
-    //        assert(ok);
-    //
-    //        {
-    //            auto res = c.match("column0", "0", ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //
-    //        ok = c.insertRecord({
-    //            {
-    //                std::make_unique<qb::Int32RecordValue>(0),
-    //                std::make_unique<qb::StrRecordValue>("data1"),
-    //                std::make_unique<qb::Int64RecordValue>(60),
-    //                std::make_unique<qb::StrRecordValue>("data2")
-    //            }
-    //        });
-    //        assert(ok);
-    //
-    //        {
-    //            auto res = c.match("column0", "0", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column1", "data1", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "60", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column3", "data2", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "not a number so what ?", ok);
-    //            assert(!ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //
-    //         ok = c.insertRecord({
-    //            {
-    //                std::make_unique<qb::Int32RecordValue>(1),
-    //                std::make_unique<qb::StrRecordValue>("data1"),
-    //                std::make_unique<qb::Int64RecordValue>(60),
-    //                std::make_unique<qb::StrRecordValue>("data2")
-    //            }
-    //        });
-    //        assert(ok);
-    //
-    //        {
-    //            auto res = c.match("column0", "1", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column1", "data1", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "60", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column3", "data2", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "not a number so what ?", ok);
-    //            assert(!ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //
-    //        c.remove(1);
-    //
-    //        {
-    //            auto res = c.match("column0", "1", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column1", "data1", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "60", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column3", "data2", ok);
-    //            assert(ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //        {
-    //            auto res = c.match("column2", "not a number so what ?", ok);
-    //            assert(!ok);
-    //            res.debug_PrintCollection();
-    //        }
-    //    }
+    std::cout << "Running functional tests" << std::endl;
+
+    using QBRecordCollection = qb::QBRecordCollection;
+
+    auto assertColumns = [](const auto& r, const auto& c1, const auto& c2, const auto& c3, const auto& c4) {
+        auto* idRecord = dynamic_cast<qb::Int32RecordValue*>(r.columns[0].get());
+        assert(idRecord);
+        assert(idRecord->value == c1);
+
+        auto* strRecord = dynamic_cast<qb::StrRecordValue*>(r.columns[1].get());
+        assert(strRecord);
+        assert(strRecord->value == c2);
+
+        auto* intRecord = dynamic_cast<qb::Int64RecordValue*>(r.columns[2].get());
+        assert(intRecord);
+        assert(intRecord->value == c3);
+
+        auto* strRecord2 = dynamic_cast<qb::StrRecordValue*>(r.columns[3].get());
+        assert(strRecord2);
+        assert(strRecord2->value == c4);
+    };
+
+    struct TestRecord {
+        int32_t id;
+        std::string column1;
+        int64_t column2;
+        std::string column3;
+    };
+
+    auto assertResult = [&](const QBRecordCollection& res, size_t expectedSize, const std::vector<TestRecord>& expected) {
+        assert(res.size() == expectedSize);
+        size_t i = 0;
+        for (const auto& [id, r] : res) {
+            auto& ex = expected[i];
+            assertColumns(r, ex.id, ex.column1, ex.column2, ex.column3);
+            i++;
+        }
+    };
+
+    {
+        bool ok = false;
+        QBRecordCollection c({ "column0", "column1", "column2", "column3" });
+        assert(c.createIndex("column1", qb::RecordValueType::String));
+        assert(c.createIndex("column2", qb::RecordValueType::Int64));
+        assert(c.createIndex("column3", qb::RecordValueType::String));
+
+        {
+            auto res = c.match("column0", "0", ok);
+            assert(ok);
+            assert(res.size() == 0);
+        }
+
+        ok = c.insertRecord({
+            {
+                std::make_unique<qb::Int32RecordValue>(0),
+                std::make_unique<qb::StrRecordValue>("data1"),
+                std::make_unique<qb::Int64RecordValue>(60),
+                std::make_unique<qb::StrRecordValue>("data2")
+            }
+        });
+        assert(ok);
+
+        {
+            auto res = c.match("column0", "0", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 0, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column1", "data1", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 0, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column2", "60", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 0, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column3", "data2", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 0, "data1", 60, "data2" } });
+        }
+
+        {
+            auto res = c.match("column3", "data1", ok);
+            assert(ok); // Should this be false? I don't think so.
+            assert(res.size() == 0);
+        }
+        {
+            auto res = c.match("column2", "Not a number! Should not crash, or throw.", ok);
+            assert(!ok);
+            assert(res.size() == 0);
+        }
+
+        ok = c.insertRecord({
+            {
+                std::make_unique<qb::Int32RecordValue>(1),
+                std::make_unique<qb::StrRecordValue>("data1"),
+                std::make_unique<qb::Int64RecordValue>(60),
+                std::make_unique<qb::StrRecordValue>("data2")
+            }
+        });
+        assert(ok);
+
+        {
+            auto res = c.match("column0", "1", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 1, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column1", "data1", ok);
+            assert(ok);
+            assert(res.size() == 2);
+
+            assertResult(res, 2, { { 0, "data1", 60, "data2" }, { 1, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column2", "60", ok);
+            assert(ok);
+            assert(res.size() == 2);
+
+            assertResult(res, 2, { { 0, "data1", 60, "data2" }, { 1, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column3", "data2", ok);
+            assert(ok);
+            assert(res.size() == 2);
+
+            assertResult(res, 2, { { 0, "data1", 60, "data2" }, { 1, "data1", 60, "data2" } });
+        }
+
+        c.remove(0);
+
+        {
+            auto res = c.match("column0", "0", ok);
+            assert(ok);
+            assert(res.size() == 0);
+        }
+        {
+            auto res = c.match("column1", "data1", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 1, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column2", "60", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 1, "data1", 60, "data2" } });
+        }
+        {
+            auto res = c.match("column3", "data2", ok);
+            assert(ok);
+            assert(res.size() == 1);
+
+            assertResult(res, 1, { { 1, "data1", 60, "data2" } });
+        }
+    }
 }
 
 template <size_t TCount>
 void runPerfTestFindMatchingIn() {
+    std::cout << "Running perf test with " << TCount << " iterations" << std::endl;
+
     size_t useTheResultToAvoidCompilerOptimization1 = 0;
 
     {
@@ -282,9 +338,14 @@ void runAllTestCases() {
     beforeTests();
 
     runFunctionalTests();
+    std::cout << std::endl;
 
     runPerfTestFindMatchingIn<10>();
     std::cout << std::endl;
     runPerfTestFindMatchingIn<100>();
+    std::cout << std::endl;
+
+    std::cout << std::endl;
+    std::cout << "All tests passed!" << std::endl;
     std::cout << std::endl;
 }
