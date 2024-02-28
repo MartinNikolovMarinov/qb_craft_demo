@@ -35,72 +35,71 @@ void beforeTests() {
 
     static int uniqueIdx = 0;
 
-    // Populate the base implementation
+    // Populate test data
     {
-        auto& c = testBaseImplementation;
-
-        c.reserve(TEST_CASES);
-
-        // Make sure all generated random elemnts are present in the collection:
-        for (int32_t i = 0; i < TEST_RND_ELEMENTS; i++) {
-            base_impl::QBRecord r;
-            r.column0 = uniqueIdx++;
-            r.column1 = rndStrings[i];
-            r.column2 = rndLongs[i];
-            r.column3 = rndStrings[TEST_RND_ELEMENTS - i - 1];
-            c.push_back(r);
-        }
-
-        // Fill the rest of the collection with random data.
-        for (int32_t i = 0; i < (TEST_CASES - TEST_RND_ELEMENTS); i++) {
-            base_impl::QBRecord r;
-            int32_t rndIdx1 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
-            int32_t rndIdx2 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
-            int32_t rndIdx3 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
-            r.column0 = uniqueIdx++;
-            r.column1 = rndStrings[rndIdx1];
-            r.column2 = rndLongs[rndIdx2];
-            r.column3 = rndStrings[rndIdx3];
-            c.push_back(r);
-        }
-    }
-
-    // Populate the qb implementation
-    {
-        auto& c = testQBImplementation;
+        auto& c1 = testBaseImplementation;
+        auto& c2 = testQBImplementation;
         bool ok = false;
 
-        ok = c.createIndex("column1", qb::RecordValueType::String);
+        c1.reserve(TEST_CASES);
+
+        ok = c2.createIndex("column1", qb::RecordValueType::String);
         assert(ok);
-        ok = c.createIndex("column2", qb::RecordValueType::Int64);
+        ok = c2.createIndex("column2", qb::RecordValueType::Int64);
         assert(ok);
-        ok = c.createIndex("column3", qb::RecordValueType::String);
+        ok = c2.createIndex("column3", qb::RecordValueType::String);
         assert(ok);
 
-        c.reserve(TEST_CASES);
+        c2.reserve(TEST_CASES);
 
         // Make sure all generated random elemnts are present in the collection:
         for (int32_t i = 0; i < TEST_RND_ELEMENTS; i++) {
-            qb::Record<4> r;
-            r.columns[0] = std::make_unique<qb::Int32RecordValue>(uniqueIdx);
-            r.columns[1] = std::make_unique<qb::StrRecordValue>(rndStrings[i]);
-            r.columns[2] = std::make_unique<qb::Int64RecordValue>(rndLongs[i]);
-            r.columns[3] = std::make_unique<qb::StrRecordValue>(rndStrings[TEST_RND_ELEMENTS - i - 1]);
-            c.insertRecord(std::move(r));
+
+            {
+                base_impl::QBRecord r;
+                r.column0 = uniqueIdx;
+                r.column1 = rndStrings[i];
+                r.column2 = rndLongs[i];
+                r.column3 = rndStrings[TEST_RND_ELEMENTS - i - 1];
+                c1.push_back(r);
+            }
+
+            {
+                qb::Record<4> r;
+                r.columns[0] = std::make_unique<qb::Int32RecordValue>(uniqueIdx);
+                r.columns[1] = std::make_unique<qb::StrRecordValue>(rndStrings[i]);
+                r.columns[2] = std::make_unique<qb::Int64RecordValue>(rndLongs[i]);
+                r.columns[3] = std::make_unique<qb::StrRecordValue>(rndStrings[TEST_RND_ELEMENTS - i - 1]);
+                c2.insertRecord(std::move(r));
+            }
+
             uniqueIdx++;
         }
 
         // Fill the rest of the collection with random data.
         for (int32_t i = 0; i < (TEST_CASES - TEST_RND_ELEMENTS); i++) {
-            qb::Record<4> r;
             int32_t rndIdx1 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
             int32_t rndIdx2 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
             int32_t rndIdx3 = core::genRndInt32(0, TEST_RND_ELEMENTS - 1);
-            r.columns[0] = std::make_unique<qb::Int32RecordValue>(uniqueIdx);
-            r.columns[1] = std::make_unique<qb::StrRecordValue>(rndStrings[rndIdx1]);
-            r.columns[2] = std::make_unique<qb::Int64RecordValue>(rndLongs[rndIdx2]);
-            r.columns[3] = std::make_unique<qb::StrRecordValue>(rndStrings[rndIdx3]);
-            c.insertRecord(std::move(r));
+
+            {
+                base_impl::QBRecord r;
+                r.column0 = uniqueIdx++;
+                r.column1 = rndStrings[rndIdx1];
+                r.column2 = rndLongs[rndIdx2];
+                r.column3 = rndStrings[rndIdx3];
+                c1.push_back(r);
+            }
+
+            {
+                qb::Record<4> r;
+                r.columns[0] = std::make_unique<qb::Int32RecordValue>(uniqueIdx);
+                r.columns[1] = std::make_unique<qb::StrRecordValue>(rndStrings[rndIdx1]);
+                r.columns[2] = std::make_unique<qb::Int64RecordValue>(rndLongs[rndIdx2]);
+                r.columns[3] = std::make_unique<qb::StrRecordValue>(rndStrings[rndIdx3]);
+                c2.insertRecord(std::move(r));
+            }
+
             uniqueIdx++;
         }
     }
@@ -313,15 +312,15 @@ void runPerfTestFindMatchingIn() {
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int32_t i = 0; i < TCount; i++) {
-            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column1", rndStrings[i]);
+            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column1", rndStrings[i % TEST_RND_ELEMENTS]);
             useTheResultToAvoidCompilerOptimization2 += res.size();
         }
         for (int32_t i = 0; i < TCount; i++) {
-            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column2", std::to_string(rndLongs[i]));
+            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column2", std::to_string(rndLongs[i % TEST_RND_ELEMENTS]));
             useTheResultToAvoidCompilerOptimization2 += res.size();
         }
         for (int32_t i = 0; i < TCount; i++) {
-            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column3", rndStrings[i]);
+            auto res = base_impl::QBFindMatchingRecords(testBaseImplementation, "column3", rndStrings[i % TEST_RND_ELEMENTS]);
             useTheResultToAvoidCompilerOptimization2 += res.size();
         }
 
@@ -330,6 +329,8 @@ void runPerfTestFindMatchingIn() {
         std::cout << "base_impl::QBFindMatchingRecords: " << TCount << " iterations took: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
     }
+
+    assert(useTheResultToAvoidCompilerOptimization1 == useTheResultToAvoidCompilerOptimization2);
 }
 
 }
@@ -340,10 +341,17 @@ void runAllTestCases() {
     runFunctionalTests();
     std::cout << std::endl;
 
-    runPerfTestFindMatchingIn<10>();
-    std::cout << std::endl;
-    runPerfTestFindMatchingIn<100>();
-    std::cout << std::endl;
+    int i = 0;
+    while (i++ < 20) {
+        runPerfTestFindMatchingIn<10>();
+        std::cout << std::endl;
+        runPerfTestFindMatchingIn<100>();
+        std::cout << std::endl;
+        runPerfTestFindMatchingIn<1000>();
+        std::cout << std::endl;
+        runPerfTestFindMatchingIn<10000>();
+        std::cout << std::endl;
+    }
 
     std::cout << std::endl;
     std::cout << "All tests passed!" << std::endl;
