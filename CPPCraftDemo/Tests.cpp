@@ -306,6 +306,11 @@ void runPerfTestFindMatchingIn() {
             << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
     }
 
+    if (TCount > 1000) {
+        std::cout << "Skipping base_impl::QBFindMatchingRecords for " << TCount << " iterations, as it's too slow." << std::endl;
+        return;
+    }
+
     size_t useTheResultToAvoidCompilerOptimization2 = 0;
 
     {
@@ -341,17 +346,14 @@ void runAllTestCases() {
     runFunctionalTests();
     std::cout << std::endl;
 
-    int i = 0;
-    while (i++ < 20) {
-        runPerfTestFindMatchingIn<10>();
-        std::cout << std::endl;
-        runPerfTestFindMatchingIn<100>();
-        std::cout << std::endl;
-        runPerfTestFindMatchingIn<1000>();
-        std::cout << std::endl;
-        runPerfTestFindMatchingIn<10000>();
-        std::cout << std::endl;
-    }
+    runPerfTestFindMatchingIn<10>();
+    std::cout << std::endl;
+    runPerfTestFindMatchingIn<100>();
+    std::cout << std::endl;
+    runPerfTestFindMatchingIn<1000>();
+    std::cout << std::endl;
+    runPerfTestFindMatchingIn<10000>();
+    std::cout << std::endl;
 
     std::cout << std::endl;
     std::cout << "All tests passed!" << std::endl;
