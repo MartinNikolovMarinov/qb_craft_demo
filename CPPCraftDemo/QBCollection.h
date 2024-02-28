@@ -317,15 +317,8 @@ struct Collection {
             return res;
         }
 
-        if (column.type == RecordValueType::String) {
-            if (column.index >= m_strIndices.size()) {
-                ok = false;
-                return res;
-            }
-
-            const auto& strIndices = m_strIndices[column.index];
-
-            auto range = strIndices.equal_range(matchString);
+        auto insertRangeFromIndex = [&](const auto& indices, const auto& val) {
+            auto range = indices.equal_range(val);
             for (auto it = range.first; it != range.second; it++) {
                 for (auto& id : it->second) {
                     auto recIt = m_records.find(id);
@@ -335,6 +328,16 @@ struct Collection {
                     }
                 }
             }
+        };
+
+        if (column.type == RecordValueType::String) {
+            if (column.index >= m_strIndices.size()) {
+                ok = false;
+                return res;
+            }
+
+            const auto& strIndices = m_strIndices[column.index];
+            insertRangeFromIndex(strIndices, matchString);
         }
         else if (column.type == RecordValueType::Int64) {
             if (column.index >= m_int64Indices.size()) {
@@ -347,17 +350,7 @@ struct Collection {
             if (!ok) return res;
 
             const auto& int64Indices = m_int64Indices[column.index];
-
-            auto range = int64Indices.equal_range(v);
-            for (auto it = range.first; it != range.second; it++) {
-                for (auto& id : it->second) {
-                    auto recIt = m_records.find(id);
-                    if (recIt != m_records.end()) {
-                        auto recCpy = recIt->second.copy();
-                        res.insertRecord(std::move(recCpy));
-                    }
-                }
-            }
+            insertRangeFromIndex(int64Indices, v);
         }
 
         ok = true;
@@ -381,8 +374,15 @@ struct Collection {
                     continue;
                 }
 
-
                 // Remove from indices
+
+                auto removeIdFromIndex = [&](auto& indices, auto& val) {
+                    auto it = indices.find(val);
+                    if (it != indices.end()) {
+                        auto& vec = it->second;
+                        vec.erase(std::remove(vec.begin(), vec.end(), id), vec.end());
+                    }
+                };
 
                 if (column.type == RecordValueType::String) {
                     if (column.index >= m_strIndices.size()) {
@@ -392,11 +392,7 @@ struct Collection {
                     StrIndices& strIndices = m_strIndices[column.index];
                     StrRecordValue* strRecord = dynamic_cast<StrRecordValue*>(value.get());
                     if (strRecord) {
-                        auto it = strIndices.find(strRecord->value);
-                        if (it != strIndices.end()) {
-                            auto& vec = it->second;
-                            vec.erase(std::remove(vec.begin(), vec.end(), id), vec.end());
-                        }
+                        removeIdFromIndex(strIndices, strRecord->value);
                     }
                 }
                 else if (column.type == RecordValueType::Int64) {
@@ -407,11 +403,7 @@ struct Collection {
                     Int64Indices& int64Indices = m_int64Indices[column.index];
                     Int64RecordValue* int64Record = dynamic_cast<Int64RecordValue*>(value.get());
                     if (int64Record) {
-                        auto it = int64Indices.find(int64Record->value);
-                        if (it != int64Indices.end()) {
-                            auto& vec = it->second;
-                            vec.erase(std::remove(vec.begin(), vec.end(), id), vec.end());
-                        }
+                        removeIdFromIndex(int64Indices, int64Record->value);
                     }
                 }
             }

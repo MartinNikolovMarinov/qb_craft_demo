@@ -21,8 +21,6 @@ static std::array<int64_t, TEST_RND_ELEMENTS> rndLongs;
 static base_impl::QBRecordCollection testBaseImplementation;
 static qb::QBRecordCollection testQBImplementation({ "column0", "column1", "column2", "column3" });
 
-}
-
 void beforeTests() {
     srand(uint32_t(time(0)));
 
@@ -332,6 +330,8 @@ void runPerfTestFindMatchingIn() {
         std::cout << "base_impl::QBFindMatchingRecords: " << TCount << " iterations took: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
     }
+}
+
 }
 
 void runAllTestCases() {
